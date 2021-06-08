@@ -1,0 +1,177 @@
+********************************
+*       Acos.Alarm             *
+********************************
+
+* This was written with MerlinPro assembler
+
+* Modified to work with ACOS 2.14/2.2 by Paul Lee 05/04/2021
+
+* This program started out as the ACOS.TIME program, I
+* disassembled it and added an alarm feature, also for
+* the people using 'smart' modems that tell you what
+* the connect speed is, this only updates the screen about
+* once every second, allowing for fewer dropped characters
+* durring connects (I guess a BBS is supposed to answer
+* the phone).
+
+* To put this into your BBS, put a line like this before
+* the line with the MODEM(0) command
+
+*  USE "ACOS.ALARM",65,0,"00:00:00"
+
+* or
+
+* USE "ACOS.ALARM",X,Y,A$
+
+* The first number is the X position on the screen to display
+* the time, the second number is the Y position on the screen,
+* (this is the same as the old ACOS.TIME program), the third
+* variable is the time for the alarm.
+
+* This allows your BBS to re-set at midnight if the hour is
+* set to 0, I also set it to 3 on mine so that it auto-runs
+* ProTerm on Sunday mornings to call a few BBSs...
+
+ DSK ACOS.ALARM ;Save on disk as ACOS.ALARM
+
+ ORG $5000 ;File starting address
+ ORG $9E00 ;actual starting address
+
+CH = $24 ;Cursor X position
+CV = $25 ;Cursor Y position
+ZP1 = $EB ;2 byte scratch area
+
+GOBCOM = $386 ;Gobble command (comma)
+INPNUM = $389 ;Input integer number A=MSB X=LSB
+INPSTR = $38C ;Input string
+AMPERV = $3F5 ;Ampersand vector
+
+VIDCOUT = $906 ;Print char in A to screen
+GETTIME = $D05 ;Read the clock
+START = $1371 ;ACOS restart
+   ;(the same as 'S' from the
+   ;Q,S,M prompt)
+
+********************************
+* Get variables                *
+********************************
+
+ JSR GOBCOM
+ JSR INPNUM
+ STX XPOS ;Screen X position
+ JSR GOBCOM
+ JSR INPNUM
+ STX YPOS ;Screen Y position
+ JSR GOBCOM
+ JSR INPSTR
+ STX ZP1 ;Alarm time string pointer
+ STA ZP1+1
+
+********************************
+* Point ampersand vector to    *
+* this routine.                *
+********************************
+
+ LDA #$4C ;store JMP SHOW
+ STA AMPERV
+ LDA #<SHOW
+ STA AMPERV+1
+ LDA #>SHOW
+ STA AMPERV+2
+
+********************************
+* Move string into safe place  *
+********************************
+
+ LDY #8 ;change this to 11 for AM/PM
+MOVE DEY
+ LDA (ZP1),Y
+ STA TIME,Y
+ TYA
+ BNE MOVE
+
+********************************
+* Print Alarm time on line     *
+* under the time display       *
+********************************
+
+ LDA XPOS
+ STA CH ;X screen position
+ LDY YPOS
+ INY
+ STY CV ;Y position + 1
+ LDX #0
+PALARM LDA TIME,X ;Get ASCII alarm character
+ JSR VIDCOUT ;and print it
+ INX
+ CPX #8 ;Change this to 11 for AM/PM
+ BNE PALARM
+ CLC
+
+********************************
+* Return to ACOS               *
+********************************
+
+ RTS
+
+********************************
+* Show time and check alarm    *
+********************************
+
+* the delay is approximatly one second, adjust it for
+* a little less than one second, so it occasionally
+* looks like it pauses.  This will ensure that the
+* alarm time will not be skipped over while not display
+* too many times and missing characters durring a
+* connect.
+
+SHOW DEC DELAY
+ BNE RTS
+ DEC DELAY+1
+ BNE RTS
+
+********************************
+* Print time on screen         *
+********************************
+
+ LDA XPOS ;Position the cursor
+ STA CH
+ LDA YPOS
+ STA CV
+ LDX #0
+ JSR GETTIME ;Read clock
+ STA PRINT+2 ;Put string address
+ STA ALARM+2 ;into 'dummy' addresses
+ STX PRINT+1
+ STX ALARM+1
+ LDX #0
+PRINT LDA $FFFF,X ;Dummy address
+ JSR VIDCOUT ;Print a character
+ INX
+ CPX #11 ;All 11 characters (AM/PM?)
+ BNE PRINT
+
+********************************
+* Compare current time with    *
+* alarm setting                *
+********************************
+
+ LDY #8 ;Change this to 11 for AM/PM
+ALOOP DEY
+ALARM LDA $FFFF,Y ;Dummy address
+ AND #$7F ;Mask the high bit
+ CMP TIME,Y ;Are they equal
+ BNE OUT ;if not, return
+ TYA
+ BNE ALOOP ;All characters checked?
+ JMP START ;yes, restart BBS
+
+* adjust next line for less than one second.
+OUT LDA #$14 ;Reset the delay values
+ STA DELAY+1
+RTS RTS ;Return to BBS
+
+XPOS DS 1
+YPOS DS 1
+DELAY DS 2
+TIME ASC '00:00:00'

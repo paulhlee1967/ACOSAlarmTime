@@ -1,0 +1,93 @@
+********************************
+*          Acos.Time           *
+********************************
+
+* This was written with MerlinPro assembler
+
+* Modified to work with ACOS 2.x by Paul Lee 05/04/2021
+
+* This started out as ACOS.TIME, which was written to work
+* with ACOS version 1.3.  I disassembled it and fixed it to
+* work with ACOS 2.14 and later.
+
+* To put this into your BBS, put a line like this before
+* the line with the MODEM(0) command
+
+*  USE "ACOS.TIME",20,20
+
+* or
+
+* USE "ACOS.TIME",X,Y
+
+* The first number is the X position on the screen to display
+* the time, the second number is the Y position on the screen.
+
+
+ DSK ACOS.TIME ;Save on disk as ACOS.TIME
+
+ ORG $9E00 ;actual starting address
+
+CH = $24 ;Cursor X position
+CV = $25 ;Cursor Y position
+
+GOBCOM = $386 ;Gobble command (comma)
+INPNUM = $389 ;Input integer number A=MSB X=LSB
+INPSTR = $38C ;Input string
+AMPERV = $3F5 ;Ampersand vector
+
+VIDCOUT = $906 ;Print char in A to screen
+GETTIME = $D05 ;Read the clock
+
+
+********************************
+* Get variables                *
+********************************
+
+ JSR GOBCOM
+ JSR INPNUM
+ STX XPOS ;Screen X position
+ JSR GOBCOM
+ JSR INPNUM
+ STX YPOS ;Screen Y position
+
+********************************
+* Point ampersand vector to    *
+* this routine.                *
+********************************
+
+ LDA #$4C ;store JMP SHOW
+ STA AMPERV
+ LDA #<SHOW
+ STA AMPERV+1
+ LDA #>SHOW
+ STA AMPERV+2
+
+********************************
+* Return to ACOS               *
+********************************
+
+ RTS
+
+********************************
+* Print time on screen         *
+********************************
+
+SHOW LDA XPOS ;Position the cursor
+ STA CH
+ LDA YPOS
+ STA CV
+ LDX #0
+ JSR GETTIME ;Read clock
+ STA PRINT+2 ;Put string address
+ STX PRINT+1
+ LDX #0
+PRINT LDA $FFFF,X ;Dummy address
+ JSR VIDCOUT ;Print a character
+ INX
+ CPX #11 ;All 11 characters (AM/PM)
+ BNE PRINT
+
+RTS RTS ;Return to BBS
+
+XPOS DS 1
+YPOS DS 1
